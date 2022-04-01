@@ -2,258 +2,142 @@ package q
 
 import (
     "encoding/json"
-    "errors"
-    "fmt"
-    "strconv"
-    "strings"
-    "sync"
 )
 
-var empty interface{}
-
-const (
-    cacheString      = "string"
-    cacheFloat64     = "float64"
-    cacheInt         = "int"
-    cacheInt64       = "int64"
-    cacheStringSlice = "stringSlice"
-    cacheFloatSlice  = "floatSlice"
-    cacheIntSlice    = "intSlice"
-    cacheInt64Slice  = "int64Slice"
+var (
+    empty interface{}
 )
 
-type Q struct {
-    raw     json.RawMessage
-    content interface{}
-    cache   map[string]*sync.Map
-}
-
-func (q *Q) decode() {
-    _ = json.Unmarshal(q.raw, &q.content)
-}
-func (q *Q) init() {
-    q.cache = map[string]*sync.Map{
-        cacheString:      {},
-        cacheFloat64:     {},
-        cacheInt:         {},
-        cacheInt64:       {},
-        cacheStringSlice: {},
-        cacheFloatSlice:  {},
-        cacheIntSlice:    {},
-        cacheInt64Slice:  {},
+type (
+    Q struct {
+        content interface{}
     }
+)
+
+func New() *Q {
+    f := &Q{
+        content: empty,
+    }
+    return f
 }
-func (q *Q) From(node string) (interface{}, error) {
-    if r, err := getNestedValue(q.content, node, "."); err == nil {
-        return r, nil
+func (q *Q) Get(nodes ...string) interface{} {
+    if len(nodes) != 1 {
+        return q.content
+    }
+    r, err := getNestedValue(q.content, nodes[0], ".")
+    if err == nil {
+        return r
     } else {
-        return nil, err
+        return nil
     }
 }
-func (q *Q) GetCache(cType string) *sync.Map {
-    return q.cache[cType]
+func (q *Q) Find(key string) *Q {
+    result := New()
+    if r, err := getNestedValue(q.content, key, "."); err == nil && r != nil {
+        result.content = r
+    }
+
+    return result
 }
-func (q *Q) String(node string) string {
-    cache := q.GetCache(cacheString)
-    if v, ok := cache.Load(node); ok {
-        return v.(string)
-    }
-    v, err := q.From(node)
-    if err != nil {
-        return ""
-    }
-    r, ok := v.(string)
+func (q *Q) SetContent(p interface{}) {
+    q.content = p
+}
+func (q *Q) FromJson(data []byte) error {
+    return json.Unmarshal(data, &q.content)
+}
+func (q *Q) Count() int {
+    arr, ok := q.content.([]interface{})
     if ok {
-        cache.Store(node, r)
+        return len(arr)
     }
+
+    return 0
+}
+func (q *Q) Join(o *Q) {
+    if q.content == empty {
+        q.content = []interface{}{}
+    }
+    if arr1, ok1 := q.content.([]interface{}); ok1 {
+        if arr2, ok2 := o.content.([]interface{}); ok2 {
+            for _, val := range arr2 {
+                arr1 = append(arr1, val)
+            }
+        }
+        q.content = arr1
+    }
+}
+func (q *Q) Set(key string, p interface{}) {
+    if q.content == empty {
+        q.content = map[string]interface{}{}
+    }
+    m, ok := q.content.(map[string]interface{})
+    if !ok {
+        return
+    }
+    m[key] = p
+}
+func (q *Q) Where(key string, cond string, i interface{}) *Q {
+    fn := getQuery(cond)
+    if fn == nil {
+        return New()
+    }
+    arr, ok := q.content.([]interface{})
+    if !ok {
+        return New()
+    }
+    var result []interface{}
+    for _, obj := range arr {
+        if r, err := getNestedValue(obj, key, "."); err == nil && r != nil {
+            if ok, err := fn(r, i); ok && err == nil {
+                result = append(result, obj)
+            }
+        }
+    }
+    r := New()
+    r.content = result
     return r
 }
-func (q *Q) Float(node string) float64 {
-    cache := q.GetCache(cacheFloat64)
-    if v, ok := cache.Load(node); ok {
-        return v.(float64)
+func (q *Q) Select(keys ...string) *Q {
+    arr, ok := q.content.([]interface{})
+    if !ok {
+        return New()
     }
-    v, err := q.From(node)
-    if err != nil {
-        return 0
+    var result []interface{}
+    for _, obj := range arr {
+        var m = map[string]interface{}{}
+        for _, key := range keys {
+            if r, err := getNestedValue(obj, key, "."); err == nil && r != nil {
+                m[key] = r
+            } else {
+                break
+            }
+        }
+        if len(m) == 0 {
+            continue
+        }
+        result = append(result, m)
     }
-    r, ok := v.(float64)
-    if ok {
-        cache.Store(node, r)
-    }
+    r := New()
+    r.content = result
     return r
 }
-func (q *Q) Int64(node string) int64 {
-    return int64(q.Float(node))
+
+///
+func (q *Q) Int(key string) int64 {
+    val, _ := q.Get(key).(float64)
+    return int64(val)
 }
-func (q *Q) Int(node string) int {
-    return int(q.Float(node))
-}
-func (q *Q) FloatSlice(node string) []float64 {
-    cache := q.GetCache(cacheFloatSlice)
-    if v, ok := cache.Load(node); ok {
-        return v.([]float64)
-    }
-    var result []float64
-    v, err := q.From(node)
-    if err != nil {
-        return result
-    }
-    if r, ok := v.([]interface{}); ok {
-        for _, val := range r {
-            if fv, ok := val.(float64); ok {
-                result = append(result, fv)
-            }
-        }
-        cache.Store(node, result)
-    }
-    return result
-}
-func (q *Q) Int64Slice(node string) []int64 {
-    cache := q.GetCache(cacheInt64Slice)
-    if v, ok := cache.Load(node); ok {
-        return v.([]int64)
-    }
-    var result []int64
-    v, err := q.From(node)
-    if err != nil {
-        return result
-    }
-    if r, ok := v.([]interface{}); ok {
-        for _, val := range r {
-            if fv, ok := val.(float64); ok {
-                result = append(result, int64(fv))
-            }
-        }
-        cache.Store(node, result)
-    }
-    return result
-}
-func (q *Q) IntSlice(node string) []int {
-    cache := q.GetCache(cacheIntSlice)
-    if v, ok := cache.Load(node); ok {
-        return v.([]int)
-    }
-    var result []int
-    v, err := q.From(node)
-    if err != nil {
-        return result
-    }
-    if r, ok := v.([]interface{}); ok {
-        for _, val := range r {
-            if fv, ok := val.(float64); ok {
-                result = append(result, int(fv))
-            }
-        }
-        cache.Store(node, result)
-    }
-    return result
-}
-func (q *Q) StringSlice(node string) []string {
-    cache := q.GetCache(cacheStringSlice)
-    if v, ok := cache.Load(node); ok {
-        return v.([]string)
-    }
-    var result []string
-    v, err := q.From(node)
-    if err != nil {
-        return result
-    }
-    if r, ok := v.([]interface{}); ok {
-        for _, val := range r {
-            if fv, ok := val.(string); ok {
-                result = append(result, fv)
-            }
-        }
-        cache.Store(node, result)
-    }
-    return result
-}
-func NewString(str string) *Q {
-    q := &Q{}
-    q.raw = []byte(str)
-    q.init()
-    q.decode()
-    return q
+func (q *Q) Float(key string) float64 {
+    val, _ := q.Get(key).(float64)
+    return val
 }
 
-func toFloat(v interface{}) (float64, bool) {
-    var f float64
-    flag := true
-    switch u := v.(type) {
-    case int:
-        f = float64(u)
-    case int8:
-        f = float64(u)
-    case int16:
-        f = float64(u)
-    case int32:
-        f = float64(u)
-    case int64:
-        f = float64(u)
-    case float32:
-        f = float64(u)
-    case float64:
-        f = u
-    default:
-        flag = false
-    }
-    return f, flag
+func (q *Q) String(key string) string {
+    val, _ := q.Get(key).(string)
+    return val
 }
-func getNestedValue(input interface{}, node, separator string) (interface{}, error) {
-    toks := strings.Split(node, separator)
-    for _, n := range toks {
-        if isIndex(n) {
-            // find slice/array
-            if arr, ok := input.([]interface{}); ok {
-                indx, err := getIndex(n)
-                if err != nil {
-                    return input, err
-                }
-                arrLen := len(arr)
-                if arrLen == 0 ||
-                    indx > arrLen-1 {
-                    return empty, errors.New("empty array")
-                }
-                input = arr[indx]
-            }
-        } else {
-            // find in map
-            validNode := false
-            if mp, ok := input.(map[string]interface{}); ok {
-                input, ok = mp[n]
-                validNode = ok
-            }
 
-            // find in group data
-            if mp, ok := input.(map[string][]interface{}); ok {
-                input, ok = mp[n]
-                validNode = ok
-            }
-
-            if !validNode {
-                return empty, fmt.Errorf("invalid node name %s", n)
-            }
-        }
-    }
-
-    return input, nil
-}
-func isIndex(in string) bool {
-    return strings.HasPrefix(in, "[") && strings.HasSuffix(in, "]")
-}
-func getIndex(in string) (int, error) {
-    if !isIndex(in) {
-        return -1, fmt.Errorf("invalid index")
-    }
-    is := strings.TrimLeft(in, "[")
-    is = strings.TrimRight(is, "]")
-    oint, err := strconv.Atoi(is)
-    if err != nil {
-        return -1, err
-    }
-    return oint, nil
-}
-func toString(v interface{}) string {
-    return fmt.Sprintf("%v", v)
+func (q *Q) Bool(key string) bool {
+    val, _ := q.Get(key).(bool)
+    return val
 }

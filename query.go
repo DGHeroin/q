@@ -28,6 +28,9 @@ func defaultQueries() map[string]QueryFunc {
         operatorLtE:   lte,
     }
 }
+func getQuery(cond string) QueryFunc {
+    return defaultQueries()[cond]
+}
 
 func eq(x interface{}, y interface{}) (bool, error) {
     if v, ok := toFloat(y); ok {

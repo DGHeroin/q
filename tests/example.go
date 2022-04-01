@@ -1,15 +1,60 @@
 package main
 
 import (
+    "fmt"
     "github.com/DGHeroin/q"
-    "log"
-    "sync"
-    "time"
 )
 
+func main() {
+    var (
+        q1   = q.New()
+        q2   = q.New()
+        q3   = q.New()
+        join = q.New()
+    )
+    q1.FromJson(a)
+    q2.FromJson(b)
+    q3.FromJson(c)
+    join.Join(q2)
+    join.Join(q3)
+
+    fmt.Println("name:", q1.Get("name"))
+    fmt.Println("items:", q1.Get("items.[0]"))
+    fmt.Println("product.code:", q1.Get("product.code"))
+    fmt.Println("prices:", q1.Get("prices"))
+
+    fmt.Println("name:", q1.String("name"))
+    fmt.Println("id:", q1.Int("id"))
+    fmt.Println("weight:", q1.Float("weight"))
+    fmt.Println("isSelling:", q1.Bool("isSelling"))
+    fmt.Println("product.name:", q1.String("product.name"))
+
+    fmt.Println("q2 count:", q2.Count())
+    fmt.Println("q3 count:", q3.Count())
+    fmt.Println("join:", join.Count())
+
+    w1 := join.Where("id", ">", 1).Where("id", "<=", 3)
+    fmt.Println("where:", w1.Get())
+
+    w2 := join.Where("name", "=", "Fujitsu")
+    fmt.Println("where:", w2.Get())
+
+    x := join.Select("id", "price")
+    fmt.Println("select:", x.Get())
+
+    f := q1.Find("items")
+    fmt.Println("find:", f.Get())
+
+    q1.Set("provider", "best seller")
+    fmt.Println("provider:", q1.String("provider"))
+}
+
 var (
-    json1 = `{
+    a = []byte(`{
     "name":"computers",
+    "id":100,
+    "weight":10.4,
+    "isSelling":true,
     "description":"List of computer products",
     "prices":[2400, 2100, 1200, 400.87, 89.90, 150.10],
     "small_prices":[2400000, 2100000, 1200000, 400870, 89900, 150100],
@@ -45,45 +90,39 @@ var (
          "price":850
       }
    ]
-}`
+}`)
+    b = []byte(`
+[
+  {
+    "id": 1,
+    "name": "MacBook Pro 13 inch retina",
+    "price": 1350
+  },
+  {
+    "id": 2,
+    "name": "MacBook Pro 15 inch retina",
+    "price": 1700
+  }
+  
+]
+`)
+    c = []byte(`
+[
+{
+    "id": 3,
+    "name": "Sony VAIO",
+    "price": 1200
+  },
+  {
+    "id": 4,
+    "name": "Fujitsu",
+    "price": 850
+  },
+  {
+    "id": null,
+    "name": "HP core i3 SSD",
+    "price": 850
+  }
+]
+`)
 )
-var (
-    query = q.NewString(json1)
-    wg    sync.WaitGroup
-)
-
-func doQuery() {
-    name := query.String("name")
-    description := query.String("description")
-    prices := query.FloatSlice("prices")
-    smallPrices := query.IntSlice("small_prices")
-    names := query.StringSlice("names")
-    productCode := query.Int64("product.code")
-    productName := query.String("product.name")
-    item0Name := query.String("items.[0].name")
-    wg.Done()
-    if true {
-        return
-    }
-    log.Println("name:", name)
-    log.Println("description:", description)
-    log.Println("prices:", prices)
-    log.Println("small_prices:", smallPrices)
-    log.Println("names:", names)
-    log.Println("produce.code:", productCode)
-    log.Println("product name:", productName)
-    log.Println("items.[0].name:", item0Name)
-}
-func main() {
-    startTime := time.Now()
-
-    max := 1000 * 1000*10
-    wg.Add(max)
-    for i := 0; i < max; i++ {
-        go doQuery()
-    }
-    wg.Wait()
-    dur := time.Since(startTime)
-    qps := int(float64(max) / float64(dur) * float64(time.Second))
-    log.Println("elapsed time", dur, qps)
-}
