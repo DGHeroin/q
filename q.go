@@ -20,6 +20,13 @@ func New() *Q {
     }
     return f
 }
+func NewWithString(str string) *Q {
+    ptr := New()
+    if err := ptr.FromJsonString(str); err != nil {
+        return nil
+    }
+    return ptr
+}
 func (q *Q) Get(nodes ...string) interface{} {
     if len(nodes) != 1 {
         return q.content
@@ -44,6 +51,9 @@ func (q *Q) SetContent(p interface{}) {
 }
 func (q *Q) FromJson(data []byte) error {
     return json.Unmarshal(data, &q.content)
+}
+func (q *Q) FromJsonString(str string) error {
+    return q.FromJson([]byte(str))
 }
 func (q *Q) Count() int {
     arr, ok := q.content.([]interface{})
@@ -122,7 +132,6 @@ func (q *Q) Select(keys ...string) *Q {
     return r
 }
 
-///
 func (q *Q) Int(key string) int64 {
     val, _ := q.Get(key).(float64)
     return int64(val)
@@ -140,4 +149,21 @@ func (q *Q) String(key string) string {
 func (q *Q) Bool(key string) bool {
     val, _ := q.Get(key).(bool)
     return val
+}
+
+func (q *Q) ToJsonString() string {
+    if data, err := json.Marshal(q.content); err == nil {
+        return string(data)
+    }
+    return "null"
+}
+func (q *Q) ToJsonStringPretty(indent ...string) string {
+    jsonIndent := "  "
+    if len(indent) == 1 {
+        jsonIndent = indent[0]
+    }
+    if data, err := json.MarshalIndent(q.content, "", jsonIndent); err == nil {
+        return string(data)
+    }
+    return "null"
 }
