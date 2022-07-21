@@ -7,7 +7,13 @@ import (
 
 type (
     stream struct {
-        dec *json.Decoder
+        dec     *json.Decoder
+        filters []filter
+    }
+    filter struct {
+        key   string
+        cond  string
+        value interface{}
     }
 )
 
@@ -25,5 +31,19 @@ func (s *stream) Decode() (*Q, error) {
     }
     p := New()
     p.content = m
+    if len(s.filters) != 0 {
+        for _, f := range s.filters {
+            if !p.Filter(f.key, f.cond, f.value) {
+                return nil, nil
+            }
+        }
+    }
     return p, nil
+}
+func (s *stream) Filter(key string, cond string, val interface{}) {
+    s.filters = append(s.filters, filter{
+        key:   key,
+        cond:  cond,
+        value: val,
+    })
 }

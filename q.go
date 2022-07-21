@@ -113,6 +113,18 @@ func (q *Q) Where(key string, cond string, i interface{}) *Q {
     r.content = result
     return r
 }
+func (q *Q) Filter(key string, cond string, i interface{}) bool {
+    if q == nil || q.content == nil {
+        return false
+    }
+    fn := getQuery(cond)
+    if fn == nil {
+        return false
+    }
+    r := q.Get(key)
+    ok, _ := fn(r, i)
+    return ok
+}
 func (q *Q) Select(keys ...string) *Q {
     if q.content == nil {
         return New()
@@ -290,4 +302,89 @@ func (q *Q) ToJsonStringPretty(indent ...string) string {
         return string(data)
     }
     return "null"
+}
+
+func (q *Q) Merge(o *Q) *Q {
+    nq := New()
+    {
+        m1, n1 := q.ToMap()
+        m2, n2 := o.ToMap()
+        log.Println(n1, n2)
+        if m1 != nil && n1 && m2 != nil && n2 {
+            var result = map[string]interface{}{}
+            for k, v := range m1 {
+                result[k] = v
+            }
+            for k, v := range m2 {
+                result[k] = v
+            }
+            nq.content = result
+            return nq
+        }
+    }
+    {
+        s1, n1 := q.ToSlice()
+        s2, n2 := o.ToSlice()
+
+        if s1 != nil && n1 && s2 != nil && n2 {
+            var result []interface{}
+            for _, v := range s1 {
+                result = append(result, v)
+            }
+            for _, v := range s2 {
+                result = append(result, v)
+            }
+            nq.content = result
+            return nq
+        }
+    }
+
+    return nil
+}
+func (q *Q) ToMap() (map[string]interface{}, bool) {
+    if q == nil || q.content == nil {
+        return nil, false
+    }
+    mm, ok := q.content.(map[string]interface{})
+    return mm, ok
+}
+func (q *Q) ToSlice() ([]interface{}, bool) {
+    if q == nil || q.content == nil {
+        return nil, false
+    }
+    sl, ok := q.content.([]interface{})
+    return sl, ok
+}
+
+func (q *Q) Uniq() *Q {
+    nq := New()
+    if arr, ok := q.ToSlice(); ok {
+        var result []interface{}
+        for _, v := range arr {
+            flag := false
+            for _, vv := range result {
+                if v == vv {
+                    flag = true
+                    break
+                }
+            }
+            if !flag {
+                result = append(result, v)
+            }
+        }
+        nq.content = result
+    }
+    return nq
+}
+
+func (q *Q) Sum() float64 {
+    sum := float64(0)
+    if arr, ok := q.ToSlice(); ok {
+        for _, v := range arr {
+            if val, ok := toFloat(v); ok {
+                sum += val
+            }
+        }
+    }
+    return sum
 }
